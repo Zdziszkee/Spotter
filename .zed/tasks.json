@@ -1,0 +1,9 @@
+[
+  {
+    "label": "Run project",
+    "command": "venv/bin/python3",
+    "args": ["src/main.py"],
+    "use_new_terminal": true,
+    "shell": "system"
+  }
+]
