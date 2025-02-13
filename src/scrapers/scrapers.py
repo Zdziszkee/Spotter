@@ -4,8 +4,8 @@ from datetime import datetime
 import aiohttp
 from bs4 import BeautifulSoup, Tag
 import re
-from models.offer import ScrapedOffer
 from typing import Pattern, Dict, List, Tuple
+from models.offer import Offer
 
 LOCATION_PATTERNS: List[Pattern] = [
     re.compile(r'Lokalizacja:\s*(?:ul\.|ulicy)?\s*([^,\.]+)', re.IGNORECASE),
@@ -123,16 +123,16 @@ class Scraper(ABC):
         self.url = url
 
     @abstractmethod
-    async def scrape(self) -> list[ScrapedOffer]:
+    async def scrape(self) -> list[Offer]:
         """Scrape the offer from the given URL provided during object construction.
 
         Returns:
-            FlatOffer: An offer object containing the scraped data.
+            list[Offer]: A list of offer objects containing the scraped data.
         """
         pass
 
 class OLXScraper(Scraper):
-    async def scrape(self) -> list[ScrapedOffer]:
+    async def scrape(self) -> list[Offer]:
         offers = []
         try:
             async with aiohttp.ClientSession() as session:
@@ -164,17 +164,21 @@ class OLXScraper(Scraper):
                                         # Extract price and size from title using regex
                                         price_match = re.search(r'(\d+)\s*PLN', title)
                                         size_match = re.search(r'(\d+)\s*m2', title)
+                                        rooms_match = re.search(r'(\d+)\s*pok', title)
+                                        floor_match = re.search(r'(\d+)\s*piętro|pietro', title, re.IGNORECASE)
 
                                         price = float(price_match.group(1)) if price_match else 0.0
                                         size = float(size_match.group(1)) if size_match else 0.0
+                                        rooms = int(rooms_match.group(1)) if rooms_match else 0
+                                        floor = int(floor_match.group(1)) if floor_match else 0
 
-                                        tasks.append(self.fetch_offer_details(session, offer_url, title, price, size))
+                                        tasks.append(self.fetch_offer_details(session, offer_url, title, price, size, rooms, floor))
 
                             # Run all tasks concurrently
                             offer_results = await asyncio.gather(*tasks, return_exceptions=True)
 
                             # Filter out exceptions and add successful results
-                            offers.extend([offer for offer in offer_results if isinstance(offer, ScrapedOffer)])
+                            offers.extend([offer for offer in offer_results if isinstance(offer, Offer)])
 
                         else:
                             print(f"Failed to fetch main page. Status code: {response.status}")
@@ -185,7 +189,7 @@ class OLXScraper(Scraper):
 
         return offers
 
-    async def fetch_offer_details(self, session, offer_url, title, price, size) -> ScrapedOffer:
+    async def fetch_offer_details(self, session, offer_url, title, price, size, rooms, floor) -> Offer:
         try:
             async with session.get(str(offer_url)) as offer_response:
                 if offer_response.status == 200:
@@ -205,15 +209,24 @@ class OLXScraper(Scraper):
                     price_elem = offer_soup.find('h3', attrs={'class': 'css-fqcbii'})
                     if price_elem:
                         price_text = price_elem.text.strip()
-                            # Extract numeric value from "2 900 zł" format
+                        # Extract numeric value from "2 900 zł" format
                         price = float(price_text.replace(' zł', '').replace(' ', ''))
 
-                    # Get size from p
-                    # Extract area
+                    # Get size
                     area = size  # Default to size from listing preview
                     area_match = re.search(r'Powierzchnia:\s*(\d+(?:\.\d+)?)\s*m²', offer_html)
                     if area_match:
                         area = float(area_match.group(1))
+
+                    # Extract rooms
+                    rooms_match = re.search(r'Liczba pokoi:\s*(\d+)', offer_html)
+                    if rooms_match:
+                        rooms = int(rooms_match.group(1))
+
+                    # Extract floor
+                    floor_match = re.search(r'Piętro:\s*(\d+)', offer_html)
+                    if floor_match:
+                        floor = int(floor_match.group(1))
 
                     # Extract date
                     date_elem = offer_soup.find('span', attrs={'data-cy': 'ad-posted-at'})
@@ -237,94 +250,108 @@ class OLXScraper(Scraper):
                     district, street = extract_location_info(description)
                     location = f"{street}, {district}"
 
-                    return ScrapedOffer(
+                    return Offer(
                         title,
                         price,
                         area,
+                        rooms,
+                        floor,
                         location,
                         listed_date,
                         description,
+                        None,
                         str(offer_url),
                         "olx",
                         images
                     )
                 else:
-                    return ScrapedOffer(
+                    return Offer(
                         title,
                         price,
                         size,
+                        rooms,
+                        floor,
                         "Unknown",
                         datetime.now(),
                         "",
+                        None,
                         str(offer_url),
                         "olx",
                         []
                     )
         except Exception as e:
             print(f"Error processing individual offer {offer_url}: {e}")
-            return ScrapedOffer(
+            return Offer(
                 title,
                 price,
                 size,
+                rooms,
+                floor,
                 "Unknown",
                 datetime.now(),
                 "",
+                None,
                 str(offer_url),
                 "olx",
                 []
             )
 
-
 class AllegroScraper(Scraper):
-    async def scrape(self) -> list[ScrapedOffer]:
+    async def scrape(self) -> list[Offer]:
         return [
-            ScrapedOffer(
+            Offer(
                 "Demo Product",
                 0.0,
                 0.0,
+                0,
+                0,
                 "Unknown",
                 datetime.now(),
                 "This is a dummy offer created for demonstration purposes.",
+                None,
                 self.url,
                 "allegro",
                 []
             )
         ]
 
-
 class FacebookScraper(Scraper):
-    async def scrape(self) -> list[ScrapedOffer]:
+    async def scrape(self) -> list[Offer]:
         return [
-            ScrapedOffer(
+            Offer(
                 "Demo Product",
                 0.0,
                 0.0,
+                0,
+                0,
                 "Unknown",
                 datetime.now(),
                 "This is a dummy offer created for demonstration purposes.",
+                None,
                 self.url,
                 "facebook",
                 []
             )
         ]
 
-
 class OtodomScraper(Scraper):
-    async def scrape(self) -> list[ScrapedOffer]:
+    async def scrape(self) -> list[Offer]:
         return [
-            ScrapedOffer(
+            Offer(
                 "Demo Product",
                 0.0,
                 0.0,
+                0,
+                0,
                 "Unknown",
                 datetime.now(),
                 "This is a dummy offer created for demonstration purposes.",
+                None,
                 self.url,
                 "otodom",
                 []
             )
         ]
-
 
 class Scrapers:
     def __init__(self):
@@ -333,7 +360,7 @@ class Scrapers:
     def add_scraper(self, scraper: Scraper):
         self.scrapers.append(scraper)
 
-    async def scrape_all(self) -> list[ScrapedOffer]:
+    async def scrape_all(self) -> list[Offer]:
         all_offers = []
         try:
             tasks = [scraper.scrape() for scraper in self.scrapers]

@@ -1,24 +1,18 @@
-import json
-import sqlite3
-from contextlib import closing
-from datetime import datetime
-from typing import Optional
+from typing import Optional, cast
 
-from pypika import Query
+from sqlalchemy.orm import Session
 
-from models.offer import Offer, ScrapedOffer
-from util.database import offers_table  # <== Import the shared table
+from models.offer import Offer
 
 
 class OffersRepository:
-    def __init__(self, connection: sqlite3.Connection) -> None:
+    def __init__(self, session: Session) -> None:
         """
-        Initialize the repository with an active SQLite connection.
+        Initialize the repository with an active SQLAlchemy session.
         """
-        self.connection = connection
-        self.table = offers_table  # use the imported table
+        self.session = session
 
-    def create_offer(self, offer: ScrapedOffer) -> Optional[int]:
+    def create_offer(self, offer: Offer) -> Optional[int]:
         """
         Inserts a new offer record into the database.
 
@@ -28,35 +22,9 @@ class OffersRepository:
         Returns:
             Optional[int]: The ID of the newly inserted offer or None if insertion failed.
         """
-        query = (
-            Query.into(self.table)
-            .columns(
-                "title",
-                "price",
-                "size",
-                "location",
-                "listed_date",
-                "description",
-                "url",
-                "website",
-                "images",
-            )
-            .insert(
-                offer.title,
-                offer.price,
-                offer.size,
-                offer.location,
-                offer.listed_date.isoformat(),  # Convert datetime to string.
-                offer.description,
-                offer.url,
-                offer.website,
-                json.dumps(offer.images),  # Serialize list to JSON string.
-            )
-        )
-        with closing(self.connection.cursor()) as cursor:
-            cursor.execute(str(query))
-            self.connection.commit()
-            return cursor.lastrowid
+        self.session.add(offer)
+        self.session.commit()
+        return cast(Optional[int], offer.id)
 
     def get_offer_by_url(self, url: str) -> Optional[Offer]:
         """
@@ -68,26 +36,8 @@ class OffersRepository:
         Returns:
             Optional[Offer]: The retrieved offer object or None if not found.
         """
-        query = Query.from_(self.table).select("*").where(self.table.url == url)
-        with closing(self.connection.cursor()) as cursor:
-            cursor.execute(str(query))
-            row = cursor.fetchone()
-
-        if row is None:
-            return None
-
-        return Offer(
-            id=row[0],
-            title=row[1],
-            price=row[2],
-            size=row[3],
-            location=row[4],
-            listed_date=datetime.fromisoformat(row[5]),
-            description=row[6],
-            url=row[7],
-            website=row[8],
-            images=json.loads(row[9]) if row[9] else [],
-        )
+        offer = self.session.query(Offer).filter(Offer.url == url).first()
+        return offer
 
     def get_offer(self, offer_id: int) -> Optional[Offer]:
         """
@@ -99,28 +49,8 @@ class OffersRepository:
         Returns:
             Optional[Offer]: The retrieved offer object or None if not found.
         """
-        query = Query.from_(self.table).select("*").where(self.table.id == offer_id)
-        with closing(self.connection.cursor()) as cursor:
-            cursor.execute(str(query))
-            row = cursor.fetchone()
-
-        if row is None:
-            return None
-
-        # Expecting the following order of fields:
-        # id, title, price, size, location, listed_date, description, url, website, images
-        return Offer(
-            id=row[0],
-            title=row[1],
-            price=row[2],
-            size=row[3],
-            location=row[4],
-            listed_date=datetime.fromisoformat(row[5]),
-            description=row[6],
-            url=row[7],
-            website=row[8],
-            images=json.loads(row[9]) if row[9] else [],
-        )
+        offer = self.session.query(Offer).filter(Offer.id == offer_id).first()
+        return offer
 
     def update_offer(self, offer: Offer) -> bool:
         """
@@ -132,24 +62,24 @@ class OffersRepository:
         Returns:
             bool: True if at least one row was updated, else False.
         """
-        q = (
-            Query.update(self.table)
-            .set("title", offer.title)
-            .set("price", offer.price)
-            .set("size", offer.size)
-            .set("location", offer.location)
-            .set("listed_date", offer.listed_date.isoformat())
-            .set("description", offer.description)
-            .set("url", offer.url)
-            .set("website", offer.website)
-            .set("images", json.dumps(offer.images))
-            .where(self.table.id == offer.id)
-        )
+        existing_offer = self.session.query(Offer).filter(Offer.id == offer.id).first()
+        if not existing_offer:
+            return False
 
-        with closing(self.connection.cursor()) as cursor:
-            cursor.execute(str(q))
-            self.connection.commit()
-            return cursor.rowcount > 0
+        existing_offer.title = offer.title
+        existing_offer.price = offer.price
+        existing_offer.size = offer.size
+        existing_offer.rooms = offer.rooms
+        existing_offer.floor = offer.floor
+        existing_offer.location = offer.location
+        existing_offer.listed_date = offer.listed_date
+        existing_offer.description = offer.description
+        existing_offer.url = offer.url
+        existing_offer.website = offer.website
+        existing_offer.images = offer.images
+
+        self.session.commit()
+        return True
 
     def delete_offer(self, offer_id: int) -> bool:
         """
@@ -161,8 +91,10 @@ class OffersRepository:
         Returns:
             bool: True if at least one row was deleted, else False.
         """
-        q = Query.from_(self.table).delete().where(self.table.id == offer_id)
-        with closing(self.connection.cursor()) as cursor:
-            cursor.execute(str(q))
-            self.connection.commit()
-            return cursor.rowcount > 0
+        offer = self.session.query(Offer).filter(Offer.id == offer_id).first()
+        if offer is None:
+            return False
+
+        self.session.delete(offer)
+        self.session.commit()
+        return True
