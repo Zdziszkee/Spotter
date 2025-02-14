@@ -3,3 +3,4 @@ __pycache__/
 *.pyc
 lesser-poland-street-names.geojson
 .idea/
+database.db
