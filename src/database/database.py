@@ -17,7 +17,7 @@ class Database:
     def create_all(self) -> None:
         """Create all tables."""
         # Import models here to avoid circular imports
-        from src.models import street, offer
+        from src.models import offer
 
         # Drop all tables first (optional, remove if you want to preserve data)
         # self.Base.metadata.drop_all(self.engine)
