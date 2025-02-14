@@ -1,5 +1,4 @@
 from sqlalchemy import Column, String, Float, Integer, DateTime, Boolean
-from sqlalchemy.orm import relationship
 from typing import List
 from datetime import datetime
 import json
@@ -31,7 +30,7 @@ class Offer(BaseModel):
 
 
     def __init__(self, title: str, price: float, size: float, rooms: int, floor: int,
-                 street: str, listed_date: datetime, description: str, district: str,
+                 street: str, city: str, listed_date: datetime, description: str, district: str,
                  url: str, source: str, images: List[str], province: str,
                  rent: float = 0.0, building_type: str = "", has_elevator: bool = False, parking: str = ""):
         super().__init__()
@@ -41,6 +40,7 @@ class Offer(BaseModel):
         self.rooms = rooms
         self.floor = floor
         self.street = street
+        self.city = city
         self.listed_date = listed_date
         self.description = description
         self.district = district

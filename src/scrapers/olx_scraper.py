@@ -12,9 +12,9 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 class OLXScraper(Scraper):
-    def __init__(self, url: str):
+    def __init__(self, url: str, streetnames: list[str]):
         super().__init__(url)
-        self.street_prefixes = ['ul.', 'ulica', 'na ulicy', 'przy ulicy', 'al.', 'aleja']
+        self.streetnames = streetnames
         self.max_concurrent_tasks = 12
         self.timeout = aiohttp.ClientTimeout(total=30)
         self.max_retries = 3
@@ -24,6 +24,58 @@ class OLXScraper(Scraper):
             'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
             'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:89.0) Gecko/20100101 Firefox/89.0'
         ]
+        self.krakow_districts = [
+            'Stare Miasto', 'Grzegórzki', 'Prądnik Czerwony', 'Prądnik Biały', 'Krowodrza', 'Bronowice',
+            'Zwierzyniec', 'Dębniki', 'Łagiewniki-Borek Fałęcki', 'Swoszowice', 'Podgórze Duchackie',
+            'Bieżanów-Prokocim', 'Podgórze', 'Czyżyny', 'Mistrzejowice', 'Bieńczyce', 'Wzgórza Krzesławickie',
+            'Nowa Huta'
+        ]
+        self.street_name_regex = r"([A-ZĄĆĘŁŃÓŚŹŻ][A-Za-zĄĆĘŁŃÓŚŹŻąćęłńóśźż\.'-]+(?:\s+[A-ZĄĆĘŁŃÓŚŹŻ][A-Za-zĄĆĘŁŃÓŚŹŻąćęłńóśźż\.'-]+)*)"
+        self.regexes = [
+            re.compile(r'ul\.(\S.*)'),   # Case 1: "ul.[streetname]" (no space after '.')
+            re.compile(r'ul\. (.+)'),    # Case 2: "ul. [streetname]" (with space after '.')
+            re.compile(r'\bul\s+(\S+)'),       # Case 3: "ul [streetname]"
+            re.compile(r'ulicy (.+)'),    # Case 4: "ulicy [streetname]"
+            re.compile(r'ulica (.+)'),    # Case 5: "ulica [streetname]"
+            re.compile(r'al\.(\S.*)'),    # Case 7: "al.[streetname]" (no space after '.')
+            re.compile(r'al\. (.+)'),     # Case 8: "al. [streetname]" (with space after '.')
+            re.compile(r'alei (.+)'),     # Case 9: "alei [streetname]"
+            re.compile(r'aleja (.+)'),     # Case 10: "aleja [streetname]"
+            re.compile(r'\bul\.?\s*(\S+)')
+
+        ]
+
+    def extract_street(self, full_text):
+            street = ""
+            candidate = ""
+            for regex in self.regexes:
+                match = regex.search(full_text)
+                if match:
+                    candidate = match.group(1).strip()
+
+                    # Hardcoded rule: if candidate ends with "iego", replace that ending with "a"
+                    if candidate.lower().endswith("iego"):
+                        candidate = candidate[:-4] + "a"
+                    # Additional rule: if candidate ends with "ej", replace that ending with "a"
+                    elif candidate.lower().endswith("ej"):
+                        candidate = candidate[:-2] + "a"
+
+                    # Compare candidate (ignoring case) against the stored street names.
+                    for streetname in self.streetnames:
+                        if candidate.lower() == streetname.lower():
+                            street = streetname
+                            break
+                    if street:
+                        break
+
+            # Fallback: if no candidate is found via regex, search for any known street name in the text.
+            if not street:
+                for streetname in self.streetnames:
+                    pattern = re.compile(r'\b' + re.escape(streetname) + r'\b', re.IGNORECASE)
+                    if pattern.search(full_text):
+                        street = streetname
+                        break
+            return street
 
     async def _fetch_with_retry(self, session: aiohttp.ClientSession, url: str) -> Optional[str]:
         for attempt in range(self.max_retries):
@@ -77,6 +129,13 @@ class OLXScraper(Scraper):
         except Exception as e:
             logger.error(f"Error parsing date '{date_str}': {str(e)}")
         return datetime.now()
+
+    def _find_district(self, text: str) -> str:
+        text = text.lower()
+        for district in self.krakow_districts:
+            if district.lower() in text:
+                return district
+        return ""
 
     async def _process_single_offer(self, session: aiohttp.ClientSession, link: Tag) -> Optional[Offer]:
         full_url = "unknown"  # Initialize with default value
@@ -151,11 +210,17 @@ class OLXScraper(Scraper):
                     listed_date = self._parse_polish_date(date_span.text.strip())
                     # Extract street information
                     full_text = f"{title} {description}"
-                    street = ""
-                    for prefix in self.street_prefixes:
-                        if match := re.search(f"{prefix}\\s+([A-Za-zżźćńółęąśŻŹĆĄŚĘŁÓŃ]+)", full_text, re.IGNORECASE):
-                            street = match.group(1)
-                            break
+
+                    street = self.extract_street(full_text) or ""
+
+                    title_tag = offer_soup.find('title')
+                    district = ""
+                    if title_tag:
+                        title_text = title_tag.text
+                        for krakow_district in self.krakow_districts:
+                            if krakow_district.lower() in title_text.lower():
+                                district = krakow_district
+                                break
 
                     return Offer(
                         title=title,
@@ -164,9 +229,10 @@ class OLXScraper(Scraper):
                         rooms=rooms,
                         floor=floor,
                         street=street,
+                        city="Kraków",
                         listed_date=listed_date,
                         description=description,
-                        district="",
+                        district=district,
                         url=str(full_url),
                         source="olx",
                         images=[],
@@ -174,7 +240,7 @@ class OLXScraper(Scraper):
                         building_type=building_type,
                         has_elevator=has_elevator,
                         parking=parking,
-                        province=""
+                        province="Małopolska"
                     )
 
         except Exception as e:

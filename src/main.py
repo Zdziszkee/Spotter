@@ -13,10 +13,17 @@ logging.basicConfig(
         logging.StreamHandler()  # This sends output to terminal
     ]
 )
+
+def load_streetnames(file_path):
+    with open(file_path, 'r', encoding='utf-8') as file:
+        return [line.strip() for line in file.readlines()]
+
 async def main():
     print("Starting server loop. Press Ctrl+C to exit.")
 
     db.create_all()
+
+    streetnames = load_streetnames('street_names_krakow')
 
     try:
         while True:
@@ -27,7 +34,7 @@ async def main():
                 olx_url = (
                 "https://www.olx.pl/nieruchomosci/mieszkania/wynajem/krakow/?search%5Border%5D=created_at:desc&search%5Bfilter_float_price:to%5D=3500&search%5Bfilter_enum_rooms%5D%5B0%5D=three&search%5Bfilter_enum_rooms%5D%5B1%5D=two"
                 )
-                scrapers_instance.add_scraper(OLXScraper(olx_url))
+                scrapers_instance.add_scraper(OLXScraper(olx_url, streetnames))
                 offers = await scrapers_instance.scrape_all()
 
                 offers_repository = OffersRepository(session)
