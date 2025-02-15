@@ -18,6 +18,7 @@ class Offer(BaseModel):
     listed_date = Column(DateTime)
     description = Column(String)
     district = Column(String(255))
+    subdistrict = Column(String(255))
     url = Column(String(255), unique=True)
     images = Column(String)  # Stored as a JSON string
     source = Column(String(50))  # Added source column
@@ -30,7 +31,7 @@ class Offer(BaseModel):
 
 
     def __init__(self, title: str, price: float, size: float, rooms: int, floor: int,
-                 street: str, city: str, listed_date: datetime, description: str, district: str,
+                 street: str, city: str, listed_date: datetime, description: str, district: str, subdistrict: str,
                  url: str, source: str, images: List[str], province: str,
                  rent: float = 0.0, building_type: str = "", has_elevator: bool = False, parking: str = ""):
         super().__init__()
@@ -44,6 +45,7 @@ class Offer(BaseModel):
         self.listed_date = listed_date
         self.description = description
         self.district = district
+        self.subdistrict = subdistrict
         self.url = url
         self.source = source
         self.images = json.dumps(images) if images else "[]"

@@ -84,6 +84,7 @@ class OffersRepository:
         existing_offer.listed_date = offer.listed_date
         existing_offer.description = offer.description
         existing_offer.district = offer.district
+        existing_offer.subdistrict = offer.subdistrict
         existing_offer.url = offer.url
         existing_offer.images = offer.images
         existing_offer.source = offer.source

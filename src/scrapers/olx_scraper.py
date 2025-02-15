@@ -8,6 +8,7 @@ import re
 import asyncio
 import random
 from typing import Optional
+from src.util.street_extractor import extract_street
 
 logger = logging.getLogger(__name__)
 
@@ -30,53 +31,25 @@ class OLXScraper(Scraper):
             'Bieżanów-Prokocim', 'Podgórze', 'Czyżyny', 'Mistrzejowice', 'Bieńczyce', 'Wzgórza Krzesławickie',
             'Nowa Huta'
         ]
-        self.street_name_regex = r"([A-ZĄĆĘŁŃÓŚŹŻ][A-Za-zĄĆĘŁŃÓŚŹŻąćęłńóśźż\.'-]+(?:\s+[A-ZĄĆĘŁŃÓŚŹŻ][A-Za-zĄĆĘŁŃÓŚŹŻąćęłńóśźż\.'-]+)*)"
-        self.regexes = [
-            re.compile(r'ul\.(\S.*)'),   # Case 1: "ul.[streetname]" (no space after '.')
-            re.compile(r'ul\. (.+)'),    # Case 2: "ul. [streetname]" (with space after '.')
-            re.compile(r'\bul\s+(\S+)'),       # Case 3: "ul [streetname]"
-            re.compile(r'ulicy (.+)'),    # Case 4: "ulicy [streetname]"
-            re.compile(r'ulica (.+)'),    # Case 5: "ulica [streetname]"
-            re.compile(r'al\.(\S.*)'),    # Case 7: "al.[streetname]" (no space after '.')
-            re.compile(r'al\. (.+)'),     # Case 8: "al. [streetname]" (with space after '.')
-            re.compile(r'alei (.+)'),     # Case 9: "alei [streetname]"
-            re.compile(r'aleja (.+)'),     # Case 10: "aleja [streetname]"
-            re.compile(r'\bul\.?\s*(\S+)')
-
+        self.subdistricts = [
+            "Kazimierz", "Kleparz", "Nowe Miasto", "Nowy Świat", "Piasek", "Stradom", "Warszawskie", "Wawel",
+            "Dąbie", "Kazimierz", "Olsza", "Osiedle Oficerskie", "Wesoła",
+            "Olsza", "Olsza II","Rakowice", "Śliczna", "Ugorek", "Wieczysta", "Osiedle Gotyk",
+            "Azory", "Bronowice Wielkie", "Górka Narodowa", "Górka Narodowa Wschód", "Górka Narodowa Zachód", "Osiedle Krowodrza Górka", "Osiedle Witkowice Nowe", "Tonie", "Witkowice", "Żabiniec",
+            "Cichy Kącik", "Czarna Wieś", "Łobzów", "Miasteczko Studenckie AGH", "Nowa Wieś",
+             "Bronowice Małe", "Mydlniki", "Osiedle Bronowice Nowe", "Osiedle Widok Zarzecze",
+            "Bielany", "Chełm", "Olszanica", "Półwsie Zwierzynieckie", "Przegorzały", "Wola Justowska", "Salwator", "Zakamycze",
+            "Bodzów", "Kobierzyn", "Koło Tynieckie", "Kostrze", "Ludwinów", "Podgórki Tynieckie", "Pychowice", "Sidzina", "Skotniki", "Tyniec", "Zakrzówek", "Kapelanka", "Kliny Zacisze", "Mochnaniec", "Osiedle Europejskie", "Osiedle Interbud", "Osiedle Kolejowe", "Osiedle Panorama", "Osiedle Podwawelskie", "Osiedle Proins", "Osiedle Ruczaj", "Osiedle Ruczaj-Zaborze",
+            "Borek Fałęcki", "Osiedle Cegielniana", "Osiedle Zaułek Jugowicki",
+            "Osiedle Uzdrowisko Swoszowice", "Bania", "Barycz", "Jugowice", "Kliny Borkowskie", "Kosocice", "Lusina", "Łysa Góra", "Opatkowice", "Rajsko", "Siarczana Góra", "Soboniowice", "Wróblowice", "Zbydniowice",
+            "Kurdwanów", "Kurdwanów Nowy", "Osiedle Piaski Nowe", "Osiedle Podlesie", "Piaski Wielkie", "Wola Duchacka", "Wola Duchacka Wschód", "Wola Duchacka Zachód",
+            "Łutnia", "Mateczny", "Płaszów", "Przewóz", "Rybitwy", "Zabłocie",
+             "Łęg", "Osiedle 2 Pułku Lotniczego", "Osiedle Akademickie", "Osiedle Dywizjonu 303",
+            "Batowice", "Dziekanowice", "Osiedle Bohaterów Września", "Osiedle Kombatantów", "Osiedle Mistrzejowice Nowe", "Osiedle Oświecenia", "Osiedle Piastów", "Osiedle Srebrnych Orłów", "Osiedle Tysiąclecia", "Osiedle Złotego Wieku",
+            "Osiedle Albertyńskie", "Osiedle Jagiellońskie", "Osiedle Kalinowe", "Osiedle Kazimierzowskie", "Osiedle Kościuszkowskie", "Osiedle Na Lotnisku", "Osiedle Niepodległości", "Osiedle Przy Arce", "Osiedle Strusia", "Osiedle Wysokie", "Osiedle Złotej Jesieni",
+            "Grębałów", "Kantorowice", "Krzesławice", "Lubocza", "Łuczanowice", "Dłubnia (Kraków)", "Osiedle Na Stoku", "Osiedle Na Wzgórzach", "Wadów", "Węgrzynowice", "Zesławice",
+            "Błonie", "Branice", "Osiedle Centrum A", "Osiedle Centrum B", "Osiedle Centrum C", "Osiedle Centrum D", "Osiedle Centrum E", "Chałupki", "Chałupki Górne", "Cło", "Górka Kościelnicka", "Holendry", "Kopaniny", "Kościelniki", "Kujawy", "Mogiła", "Nowa Huta", "Nowa Wieś", "Osiedle Górali", "Osiedle Handlowe", "Osiedle Hutnicze", "Osiedle Kolorowe", "Osiedle Krakowiaków", "Osiedle Lesisko", "Osiedle Młodości", "Osiedle Na Skarpie", "Osiedle Ogrodowe", "Osiedle Słoneczne", "Osiedle Sportowe", "Osiedle Spółdzielcze", "Osiedle Stalowe", "Osiedle Szklane Domy", "Osiedle Szkolne", "Osiedle Teatralne", "Osiedle Urocze", "Osiedle Wandy", "Osiedle Willowe", "Osiedle Zgody", "Osiedle Zielone", "Piekiełko", "Pleszów", "Przylasek Rusiecki", "Przylasek Wyciąski", "Ruszcza", "Stryjów", "Wola Rusiecka", "Wolica", "Wróżenice", "Wyciąże"
         ]
-
-    def extract_street(self, full_text):
-            street = ""
-            candidate = ""
-            for regex in self.regexes:
-                match = regex.search(full_text)
-                if match:
-                    candidate = match.group(1).strip()
-
-                    # Hardcoded rule: if candidate ends with "iego", replace that ending with "a"
-                    if candidate.lower().endswith("iego"):
-                        candidate = candidate[:-4] + "a"
-                    # Additional rule: if candidate ends with "ej", replace that ending with "a"
-                    elif candidate.lower().endswith("ej"):
-                        candidate = candidate[:-2] + "a"
-
-                    # Compare candidate (ignoring case) against the stored street names.
-                    for streetname in self.streetnames:
-                        if candidate.lower() == streetname.lower():
-                            street = streetname
-                            break
-                    if street:
-                        break
-
-            # Fallback: if no candidate is found via regex, search for any known street name in the text.
-            if not street:
-                for streetname in self.streetnames:
-                    pattern = re.compile(r'\b' + re.escape(streetname) + r'\b', re.IGNORECASE)
-                    if pattern.search(full_text):
-                        street = streetname
-                        break
-            return street
-
     async def _fetch_with_retry(self, session: aiohttp.ClientSession, url: str) -> Optional[str]:
         for attempt in range(self.max_retries):
             try:
@@ -208,10 +181,17 @@ class OLXScraper(Scraper):
                 date_span = date_container.find('span', attrs={'data-cy': 'ad-posted-at'})
                 if isinstance(date_span, Tag):
                     listed_date = self._parse_polish_date(date_span.text.strip())
-                    # Extract street information
+                    # Extract street and subdistrict information
                     full_text = f"{title} {description}"
 
-                    street = self.extract_street(full_text) or ""
+                    street = extract_street(full_text,self.streetnames) or ""
+
+                    # Extract subdistrict from the combined text using the subdistrict list
+                    subdistrict = ""
+                    for candidate in self.subdistricts:
+                        if re.search(r'\b' + re.escape(candidate) + r'\b', full_text, re.IGNORECASE):
+                            subdistrict = candidate
+                            break
 
                     title_tag = offer_soup.find('title')
                     district = ""
@@ -233,6 +213,7 @@ class OLXScraper(Scraper):
                         listed_date=listed_date,
                         description=description,
                         district=district,
+                        subdistrict=subdistrict,
                         url=str(full_url),
                         source="olx",
                         images=[],
