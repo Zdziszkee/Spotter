@@ -4,3 +4,5 @@ __pycache__/
 lesser-poland-street-names.geojson
 .idea/
 database.db
+google-credentials.json
+token.pickle
