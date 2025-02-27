@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+
 import asyncio
 import os
 import pickle
@@ -109,12 +110,9 @@ async def main():
             print("Server is running...")
             with db.session() as session:
                 scrapers_instance = Scrapers()
-                olx_url = (
-                    "https://www.olx.pl/nieruchomosci/mieszkania/wynajem/krakow/"
-                    "?search%5Border%5D=created_at:desc&search%5Bfilter_float_price:to%5D=3500"
-                    "&search%5Bfilter_enum_rooms%5D%5B0%5D=three&search%5Bfilter_enum_rooms%5D%5B1%5D=two"
-                )
+                olx_url = ("https://www.olx.pl/nieruchomosci/stancje-pokoje/krakow/?search%5Border%5D=created_at:desc&search%5Bfilter_float_price:to%5D=1500")
                 scrapers_instance.add_scraper(OLXScraper(olx_url, streetnames))
+                #scrapers_instance.add_scraper(FacebookScraper("https://www.facebook.com/groups/",streetnames))
                 offers = await scrapers_instance.scrape_all()
 
                 offers_repository = OffersRepository(session)
@@ -132,7 +130,7 @@ async def main():
                     email_content = "New offers found:\n" + "\n".join(new_offer_details)
                     gmail_send_message(email_content)
 
-            await asyncio.sleep(60)  # Wait 60 seconds before next iteration
+            await asyncio.sleep(5)  # Wait 60 seconds before next iteration
 
     except KeyboardInterrupt:
         print("Server loop interrupted. Shutting down.")
